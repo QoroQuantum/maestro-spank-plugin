@@ -4,6 +4,8 @@ extern "C"
 #include <slurm/spank.h>
 }
 
+#include <string>
+#include <vector>
 #include <algorithm>
 
 #include "Simulator.hpp"
@@ -117,6 +119,45 @@ static int _set_env(spank_t spank_ctxt) {
 	}
 
 	return SLURM_SUCCESS;
+}
+
+std::string _get_env(spank_t spank_ctxt, const std::string& var_name) {
+	static const int str_size = 1024;
+	char value[str_size];
+	
+	spank_err_t err = spank_getenv(spank_ctxt, var_name.c_str(), value, str_size);
+	
+	if (err == ESPANK_ENV_NOEXIST)
+		return std::string();
+
+	if (err != ESPANK_SUCCESS) {
+		slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+		return std::string();
+	}
+	std::string result(value);
+
+	return result;
+}
+
+std::vector<std::string> _get_job_args(spank_t spank_ctxt) {
+	std::vector<std::string> job_args;
+	
+	char** args = nullptr;
+	int argc = 0;
+	
+	spank_err_t err = spank_get_item(spank_ctxt, S_JOB_ARGV, &argc, &args);
+	if (err != ESPANK_SUCCESS) {
+		slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+		return job_args;
+	}
+	
+	job_args.reserve(argc);
+	
+	for (int i = 0; i < argc; ++i) {
+		job_args.push_back(std::string(args[i]));
+	}
+	
+	return job_args;
 }
 
 

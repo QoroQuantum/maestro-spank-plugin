@@ -21,6 +21,6 @@ else (NOT SLURM_FOUND)
 endif (NOT SLURM_FOUND)
 mark_as_advanced (SLURM_LIBRARIES SLURM_INCLUDE_DIRS)
 
-add_library (maestro_spank_plugin MODULE maestro_spank_plugin.cpp)
+add_library (maestro_spank_plugin MODULE maestro_spank_plugin.cpp maestro_spank_plugin.c)
 include_directories (BEFORE ${SLURM_INCLUDE_DIRS})
 set_target_properties (maestro_spank_plugin PROPERTIES PREFIX "" SUFFIX "" OUTPUT_NAME "maestro_spank_plugin.so")

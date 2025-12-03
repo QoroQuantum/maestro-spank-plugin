@@ -12,12 +12,19 @@ extern "C"
 #include "maestro_spank.h"
 
 static int nrQubits = 64;
+static int nrShots = 1;
 static int simulatorType = 0;
 static int simulationType = 0;
 static int maxBondDim = 0;
 
 static int _nr_qubits_cb(int val, const char* optarg, int remote) {
 	nrQubits = atoi(optarg);
+
+	return SLURM_SUCCESS;
+}
+
+static int _nr_shots_cb(int val, const char* optarg, int remote) {
+	nrShots = atoi(optarg);
 
 	return SLURM_SUCCESS;
 }
@@ -43,7 +50,7 @@ static int _simulator_type_cb(int val, const char* optarg, int remote) {
 		simulatorType = 4;
 	}
 	else if (sim_type_str == "auto") {
-		simulatorType = -1;
+		simulatorType = 1000;
 	}
 	else {
 		simulatorType = 0;
@@ -70,7 +77,7 @@ static int _simulation_type_cb(int val, const char* optarg, int remote) {
 		simulationType = 3;
 	}
 	else if (sim_type_str == "auto") {
-		simulationType = -1;
+		simulationType = 1000;
 	}
 	else {
 		simulationType = 0;
@@ -89,6 +96,12 @@ static int _set_env(spank_t spank_ctxt) {
 	if (spank_remote(spank_ctxt))
 	{
 		spank_err_t err = spank_setenv(spank_ctxt, "maestro_nrqubits", std::to_string(nrQubits).c_str(), 1);
+		if (err != ESPANK_SUCCESS)
+		{
+			slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+			return err;
+		}
+		err = spank_setenv(spank_ctxt, "maestro_nrshots", std::to_string(nrShots).c_str(), 1);
 		if (err != ESPANK_SUCCESS)
 		{
 			slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
@@ -116,6 +129,7 @@ static int _set_env(spank_t spank_ctxt) {
 	else
 	{
 		setenv("maestro_nrqubits", std::to_string(nrQubits).c_str(), 1);
+		setenv("maestro_nrshots", std::to_string(nrShots).c_str(), 1);
 		setenv("maestro_simulator_type", std::to_string(simulatorType).c_str(), 1);
 		setenv("maestro_simulation_type", std::to_string(simulationType).c_str(), 1);
 		setenv("maestro_max_bond_dim", std::to_string(maxBondDim).c_str(), 1);
@@ -183,6 +197,13 @@ struct spank_option maestro_spank_options[] = {
 	 1,
 	 0,
 	 (spank_opt_cb_f)_nr_qubits_cb},
+
+	 {(char*)"nr_shots",
+	 (char*)"Shots",
+	 (char*)"Number of shots for the execution.",
+	 1,
+	 0,
+	 (spank_opt_cb_f)_nr_shots_cb},
 
 	{(char*)"simulator_type",
 	 (char*)"Simulator",

@@ -9,20 +9,12 @@ extern "C"
 #include <algorithm>
 #include <cstring>
 
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <signal.h>
-
-#include "Simulator.hpp"
 #include "maestro_spank.h"
 
 static int nrQubits = 64;
 static int simulatorType = 0;
 static int simulationType = 0;
 static int maxBondDim = 0;
-
-pid_t pid;
 
 static int _nr_qubits_cb(int val, const char* optarg, int remote) {
 	nrQubits = atoi(optarg);
@@ -334,38 +326,6 @@ extern "C"
 
 		}
 
-
-		char prog[20];
-		char time[4];
-
-		snprintf(prog, 20, "/usr/bin/sleep");
-		snprintf(time, 4, "600");
-
-		char* args[] = { NULL, NULL, NULL };
-		args[0] = prog;
-		args[1] = time;
-
-		pid = fork();
-		if (pid < 0) {
-			slurm_error("%s %s: Fork failure", maestro_spank, __func__);
-			return(-1);
-		}
-		else if (pid > 0) {
-			slurm_info("%s %s: Forked process %d", maestro_spank, __func__, pid);
-			signal(SIGCHLD, SIG_IGN);
-			return SLURM_SUCCESS;
-		}
-
-		close(STDIN_FILENO);
-		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
-
-		if (setsid() == -1)
-			slurm_error("%s %s: Unable to setsid", maestro_spank, __func__);
-
-		if (execv("/usr/bin/sleep", args) == -1)
-			slurm_error("%s %s: Unable to exec", maestro_spank, __func__);
-
 		return SLURM_SUCCESS;
 	}
 
@@ -380,8 +340,6 @@ extern "C"
 		if (spank_get_item(spank_ctxt, S_TASK_EXIT_STATUS, &status) == ESPANK_SUCCESS) {
 
 		}
-
-		killpg(pid, SIGTERM);
 
 		return SLURM_SUCCESS;
 	}

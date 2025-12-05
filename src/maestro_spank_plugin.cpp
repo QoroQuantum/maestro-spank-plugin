@@ -12,19 +12,83 @@ extern "C"
 #include "maestro_spank.h"
 
 static int nrQubits = 64;
+static bool nrQubitsSet = false;
 static int nrShots = 1;
+static bool nrShotsSet = false;
 static int simulatorType = 0;
+static bool simulatorTypeSet = false;
 static int simulationType = 0;
+static bool simulationTypeSet = false;
 static int maxBondDim = 0;
+static bool maxBondDimSet = false;
+
+
+static const char* spank_ctx_names[] = {
+  "S_CTX_ERROR",
+  "S_CTX_LOCAL",
+  "S_CTX_REMOTE",
+  "S_CTX_ALLOCATOR",
+  "S_CTX_SLURMD",
+  "S_CTX_JOB_SCRIPT"
+};
+
+static const char* _get_spank_ctx_name()
+{
+	int ctx = spank_context();
+
+	if (ctx == S_CTX_ERROR || ctx < 0 || ctx >= static_cast<int>(sizeof(spank_ctx_names) / sizeof(spank_ctx_names[0])))
+		return "UNKNOWN";
+
+	return spank_ctx_names[ctx];
+}
+
+#define PRINT_INFO 1
+
+static void _print_info(spank_t spank_ctxt, int argc, char** argv, const char* funcname)
+{
+#ifdef PRINT_INFO
+	slurm_info("%s info: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), funcname);
+
+	for (int i = 0; i < argc; ++i)
+		slurm_info("%s info: argv[%d] = %s, in %s", maestro_spank, i, argv[i], funcname);
+
+	char** env = nullptr;
+	if (spank_get_item(spank_ctxt, S_JOB_ENV, &env) == ESPANK_SUCCESS) {
+		if (env)
+		{
+			int index = 0;
+			while (env[index]) {
+				if (strncmp(*env, "SLURM_JOB_NAME", 14) == 0) {
+					char* env_entry = (char*)malloc(strlen(*env) + 1);
+					strcpy(env_entry, *env);
+					char* job_name = strtok(env_entry, "=");
+					job_name = strtok(NULL, "=");
+					slurm_info("%s info: job name: %s", maestro_spank, job_name);
+					free(env_entry);
+				}
+				slurm_info("%s info: item %s", maestro_spank, env[index]);
+				++index;
+			}
+		}
+	}
+#endif
+}
+
+static bool _option_set()
+{
+	return nrQubitsSet || nrShotsSet || simulatorTypeSet || simulationTypeSet || maxBondDimSet;
+}
 
 static int _nr_qubits_cb(int val, const char* optarg, int remote) {
 	nrQubits = atoi(optarg);
+	nrQubitsSet = true;
 
 	return SLURM_SUCCESS;
 }
 
 static int _nr_shots_cb(int val, const char* optarg, int remote) {
 	nrShots = atoi(optarg);
+	nrShotsSet = true;
 
 	return SLURM_SUCCESS;
 }
@@ -56,6 +120,8 @@ static int _simulator_type_cb(int val, const char* optarg, int remote) {
 		simulatorType = 0;
 	}
 
+	simulatorTypeSet = true;
+
 	return SLURM_SUCCESS;
 }
 
@@ -83,11 +149,15 @@ static int _simulation_type_cb(int val, const char* optarg, int remote) {
 		simulationType = 0;
 	}
 
+	simulationTypeSet = true;
+
 	return SLURM_SUCCESS;
 }
 
 static int _max_bond_cb(int val, const char* optarg, int remote) {
 	maxBondDim = atoi(optarg);
+
+	maxBondDimSet = true;
 
 	return SLURM_SUCCESS;
 }
@@ -95,44 +165,70 @@ static int _max_bond_cb(int val, const char* optarg, int remote) {
 static int _set_env(spank_t spank_ctxt) {
 	if (spank_remote(spank_ctxt))
 	{
-		spank_err_t err = spank_setenv(spank_ctxt, "maestro_nrqubits", std::to_string(nrQubits).c_str(), 1);
-		if (err != ESPANK_SUCCESS)
+		spank_err_t err;
+
+		if (nrQubitsSet)
 		{
-			slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
-			return err;
+			err = spank_setenv(spank_ctxt, "maestro_nrqubits", std::to_string(nrQubits).c_str(), 1);
+			if (err != ESPANK_SUCCESS)
+			{
+				slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+				return err;
+			}
 		}
-		err = spank_setenv(spank_ctxt, "maestro_nrshots", std::to_string(nrShots).c_str(), 1);
-		if (err != ESPANK_SUCCESS)
+
+		if (nrShotsSet)
 		{
-			slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
-			return err;
+			err = spank_setenv(spank_ctxt, "maestro_nrshots", std::to_string(nrShots).c_str(), 1);
+			if (err != ESPANK_SUCCESS)
+			{
+				slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+				return err;
+			}
 		}
-		err = spank_setenv(spank_ctxt, "maestro_simulator_type", std::to_string(simulatorType).c_str(), 1);
-		if (err != ESPANK_SUCCESS)
+
+		if (simulatorTypeSet)
 		{
-			slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
-			return err;
+			err = spank_setenv(spank_ctxt, "maestro_simulator_type", std::to_string(simulatorType).c_str(), 1);
+			if (err != ESPANK_SUCCESS)
+			{
+				slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+				return err;
+			}
 		}
-		err = spank_setenv(spank_ctxt, "maestro_simulation_type", std::to_string(simulationType).c_str(), 1);
-		if (err != ESPANK_SUCCESS)
+
+		if (simulationTypeSet)
 		{
-			slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
-			return err;
+			err = spank_setenv(spank_ctxt, "maestro_simulation_type", std::to_string(simulationType).c_str(), 1);
+			if (err != ESPANK_SUCCESS)
+			{
+				slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+				return err;
+			}
 		}
-		err = spank_setenv(spank_ctxt, "maestro_max_bond_dim", std::to_string(maxBondDim).c_str(), 1);
-		if (err != ESPANK_SUCCESS)
+
+		if (maxBondDimSet)
 		{
-			slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
-			return err;
+			err = spank_setenv(spank_ctxt, "maestro_max_bond_dim", std::to_string(maxBondDim).c_str(), 1);
+			if (err != ESPANK_SUCCESS)
+			{
+				slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+				return err;
+			}
 		}
 	}
 	else
 	{
-		setenv("maestro_nrqubits", std::to_string(nrQubits).c_str(), 1);
-		setenv("maestro_nrshots", std::to_string(nrShots).c_str(), 1);
-		setenv("maestro_simulator_type", std::to_string(simulatorType).c_str(), 1);
-		setenv("maestro_simulation_type", std::to_string(simulationType).c_str(), 1);
-		setenv("maestro_max_bond_dim", std::to_string(maxBondDim).c_str(), 1);
+		if (nrQubitsSet)
+			setenv("maestro_nrqubits", std::to_string(nrQubits).c_str(), 1);
+		if (nrShotsSet)
+			setenv("maestro_nrshots", std::to_string(nrShots).c_str(), 1);
+		if (simulatorTypeSet)
+			setenv("maestro_simulator_type", std::to_string(simulatorType).c_str(), 1);
+		if (simulationTypeSet)
+			setenv("maestro_simulation_type", std::to_string(simulationType).c_str(), 1);
+		if (maxBondDimSet)
+			setenv("maestro_max_bond_dim", std::to_string(maxBondDim).c_str(), 1);
 	}
 
 	return SLURM_SUCCESS;
@@ -239,7 +335,9 @@ extern "C"
 	{
 		struct spank_option* opts_to_register = NULL;
 
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
+
+		_print_info(spank_ctxt, argc, argv, __func__);
 
 		switch (spank_context()) {
 			/* salloc, sbatch */
@@ -270,9 +368,24 @@ extern "C"
 	// from docs: Called at the same time as the job prolog. If this function returns a non-zero value and the SPANK plugin that contains it is required in the plugstack.conf, the node that this is run on will be drained.
 	int slurm_spank_job_prolog(spank_t spank_ctxt, int argc, char** argv)
 	{
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
 
-		return SLURM_SUCCESS;
+		_print_info(spank_ctxt, argc, argv, __func__);
+
+		if (!spank_remote(spank_ctxt))
+			return SLURM_SUCCESS;
+
+		uint32_t stepid = 0;
+		if (spank_get_item(spank_ctxt, S_JOB_STEPID, &stepid) == ESPANK_SUCCESS) {
+			slurm_debug("%s job stepid %d", maestro_spank, stepid);
+			if (stepid != SLURM_BATCH_SCRIPT)
+				return SLURM_SUCCESS;
+		}
+
+		for (int i = 0; i < argc; ++i)
+			slurm_debug("%s: argv[%d] = %s, in %s", maestro_spank, i, argv[i], __func__);
+
+		return _set_env(spank_ctxt);
 	}
 
 	// local - srun - call 2
@@ -284,17 +397,22 @@ extern "C"
 	// In the case of a heterogeneous job, slurm_spank_init is invoked once per job component.
 	int slurm_spank_init_post_opt(spank_t spank_ctxt, int argc, char** argv)
 	{
-		uint32_t stepid = 0;
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
 
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		_print_info(spank_ctxt, argc, argv, __func__);
 
 		if (!spank_remote(spank_ctxt))
 			return SLURM_SUCCESS;
 
+		uint32_t stepid = 0;
 		if (spank_get_item(spank_ctxt, S_JOB_STEPID, &stepid) == ESPANK_SUCCESS) {
+			slurm_debug("%s job stepid %d", maestro_spank, stepid);
 			if (stepid != SLURM_BATCH_SCRIPT)
 				return SLURM_SUCCESS;
 		}
+
+		for (int i = 0; i < argc; ++i)
+			slurm_debug("%s: argv[%d] = %s, in %s", maestro_spank, i, argv[i], __func__);
 
 		return _set_env(spank_ctxt);
 	}
@@ -304,7 +422,9 @@ extern "C"
 	// from docs: Called in local (srun) context only after all options have been processed. This is called after the job ID and step IDs are available. This happens in srun after the allocation is made, but before tasks are launched.
 	int slurm_spank_local_user_init(spank_t spank_ctxt, int argc, char** argv)
 	{
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
+
+		_print_info(spank_ctxt, argc, argv, __func__);
 
 		return _set_env(spank_ctxt);
 	}
@@ -313,7 +433,48 @@ extern "C"
 	// from docs: Called after privileges are temporarily dropped. (remote context only)
 	int slurm_spank_user_init(spank_t spank_ctxt, int argc, char** argv)
 	{
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
+
+		_print_info(spank_ctxt, argc, argv, __func__);
+
+		for (int i = 0; i < argc; ++i) {
+			if (strncmp("min_qubits=", argv[i], 11) == 0) {
+				int min_qubits = atoi(argv[i] + 11);
+				if (nrQubits < min_qubits)
+				{
+					slurm_info("%s: Number of qubits %d is less than minimium %d in %s", maestro_spank, nrQubits, min_qubits, __func__);
+					nrQubits = min_qubits;
+					nrQubitsSet = true;
+				}
+			}
+			else if (strncmp("max_qubits=", argv[i], 11) == 0) {
+				int max_qubits = atoi(argv[i] + 11);
+				if (nrQubits > max_qubits)
+				{
+					slurm_info("%s: Number of qubits %d is greater than maximum %d in %s", maestro_spank, max_qubits, max_qubits, __func__);
+					nrQubits = max_qubits;
+					nrQubitsSet = true;
+				}
+			}
+			else if (strncmp("max_shots=", argv[i], 10) == 0) {
+				int max_shots = atoi(argv[i] + 10);
+				if (nrShots > max_shots)
+				{
+					slurm_info("%s: Number of shots %d is greater than maximum %d in %s", maestro_spank, nrShots, max_shots, __func__);
+					nrShots = max_shots;
+					nrShotsSet = true;
+				}
+			}
+			else if (strncmp("max_mbd=", argv[i], 8) == 0) {
+				int max_mbd = atoi(argv[i] + 8);
+				if (maxBondDim > max_mbd)
+				{
+					slurm_info("%s: Max bond dimension %d is greater than maximum %d in %s", maestro_spank, maxBondDim, max_mbd, __func__);
+					maxBondDim = max_mbd;
+					maxBondDimSet = true;
+				}
+			}
+		}
 
 		return _set_env(spank_ctxt);
 	}
@@ -322,7 +483,9 @@ extern "C"
 	// from docs: Called for each task just after fork, but before all elevated privileges are dropped. This can run in parallel with slurm_spank_task_post_fork. (remote context only)
 	int slurm_spank_task_init_privileged(spank_t spank_ctxt, int argc, char** argv)
 	{
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
+
+		_print_info(spank_ctxt, argc, argv, __func__);
 
 		return SLURM_SUCCESS;
 	}
@@ -332,7 +495,9 @@ extern "C"
 	// This can run in parallel with slurm_spank_task_init_privileged. (remote context only)
 	int slurm_spank_task_post_fork(spank_t spank_ctxt, int argc, char** argv)
 	{
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
+
+		_print_info(spank_ctxt, argc, argv, __func__);
 
 		return SLURM_SUCCESS;
 	}
@@ -341,11 +506,20 @@ extern "C"
 	// from docs: Called for each task just before execve (2). If you are restricting memory with cgroups, memory allocated here will be in the job's cgroup. (remote context only)
 	int slurm_spank_task_init(spank_t spank_ctxt, int argc, char** argv)
 	{
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
 
-		if (spank_remote(spank_ctxt)) {
+		_print_info(spank_ctxt, argc, argv, __func__);
 
-		}
+		if (!spank_remote(spank_ctxt))
+			return SLURM_SUCCESS;
+
+		char* option = NULL;
+		if (spank_option_getopt(spank_ctxt, &maestro_spank_options[0], &option) != ESPANK_SUCCESS)
+			return SLURM_ERROR;
+
+		size_t optlen = strlen(option);
+		if (option == nullptr || optlen == 0)
+			return SLURM_SUCCESS;
 
 		return SLURM_SUCCESS;
 	}
@@ -354,13 +528,9 @@ extern "C"
 	// from docs: Called for each task as its exit status is collected by Slurm. (remote context only)
 	int slurm_spank_task_exit(spank_t spank_ctxt, int argc, char** argv)
 	{
-		int status;
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
 
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
-
-		if (spank_get_item(spank_ctxt, S_TASK_EXIT_STATUS, &status) == ESPANK_SUCCESS) {
-
-		}
+		_print_info(spank_ctxt, argc, argv, __func__);
 
 		return SLURM_SUCCESS;
 	}
@@ -372,7 +542,9 @@ extern "C"
 	// from docs: Called once just before slurmstepd exits in remote context. In local context, called before srun exits.
 	int slurm_spank_exit(spank_t spank_ctxt, int argc, char** argv)
 	{
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
+
+		_print_info(spank_ctxt, argc, argv, __func__);
 
 		return SLURM_SUCCESS;
 	}
@@ -381,7 +553,9 @@ extern "C"
 	// from docs: Called at the same time as the job epilog. If this function returns a non-zero value and the SPANK plugin that contains it is required in the plugstack.conf, the node that this is run on will be drained.
 	int slurm_spank_job_epilog(spank_t spank_ctxt, int argc, char** argv)
 	{
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
+
+		_print_info(spank_ctxt, argc, argv, __func__);
 
 		return SLURM_SUCCESS;
 	}
@@ -390,7 +564,9 @@ extern "C"
 	// from docs: Called in slurmd when the daemon is shut down.
 	int slurm_spank_slurmd_exit(spank_t spank_ctxt, int argc, char** argv)
 	{
-		slurm_debug("%s: argc=%d remote=%d, in %s", maestro_spank, argc, spank_remote(spank_ctxt), __func__);
+		slurm_debug("%s: argc=%d, remote=%d, context=%s, in %s", maestro_spank, argc, spank_remote(spank_ctxt), _get_spank_ctx_name(), __func__);
+
+		_print_info(spank_ctxt, argc, argv, __func__);
 
 		return SLURM_SUCCESS;
 	}

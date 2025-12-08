@@ -8,6 +8,7 @@ extern "C"
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <limits>
 
 #include "maestro_spank.h"
 
@@ -42,7 +43,7 @@ static const char* _get_spank_ctx_name()
 	return spank_ctx_names[ctx];
 }
 
-#define PRINT_INFO 1
+//#define PRINT_INFO 1
 
 static void _print_info(spank_t spank_ctxt, int argc, char** argv, const char* funcname)
 {
@@ -74,6 +75,112 @@ static void _print_info(spank_t spank_ctxt, int argc, char** argv, const char* f
 #endif
 }
 
+static bool _get_args_into_options(spank_t spank_ctxt, int argc, char** argv)
+{
+	bool result = false;
+	int min_qubits = 1;
+	int max_qubits = 64;
+	int max_mbd = std::numeric_limits<int>::max();
+	int max_shots = std::numeric_limits<int>::max();
+
+	for (int i = 0; i < argc; ++i) {
+#ifdef PRINT_INFO
+		slurm_info("%s: Parsing argv[%d] = %s", maestro_spank, i, argv[i]);
+#endif
+
+		if (!nrQubitsSet && strncmp("nrqubits=", argv[i], 9) == 0) {
+			int nr_qubits = atoi(argv[i] + 9);
+			if (nrQubits != nr_qubits)
+			{
+#ifdef PRINT_INFO
+				slurm_info("%s: Overriding number of qubits from %d to %d in %s", maestro_spank, nrQubits, nr_qubits, __func__);
+#endif
+				nrQubits = nr_qubits;
+				nrQubitsSet = true;
+				result = true;
+			}
+		}
+		else if (!nrShotsSet && strncmp("shots=", argv[i], 6) == 0) {
+			int nr_shots = atoi(argv[i] + 6);
+			if (nrShots != nr_shots)
+			{
+#ifdef PRINT_INFO
+				slurm_info("%s: Overriding number of shots from %d to %d in %s", maestro_spank, nrShots, nr_shots, __func__);
+#endif
+				nrShots = nr_shots;
+				nrShotsSet = true;
+				result = true;
+			}
+		}
+		else if (!maxBondDimSet && strncmp("max_bond_dim=", argv[i], 13) == 0) {
+			int max_bond_dim = atoi(argv[i] + 13);
+			if (maxBondDim != max_bond_dim)
+			{
+#ifdef PRINT_INFO
+				slurm_info("%s: Overriding max bond dimension from %d to %d in %s", maestro_spank, maxBondDim, max_bond_dim, __func__);
+#endif
+				maxBondDim = max_bond_dim;
+				maxBondDimSet = true;
+				result = true;
+			}
+		}
+		else if (strncmp("min_qubits=", argv[i], 11) == 0) {
+			min_qubits = atoi(argv[i] + 11);
+		}
+		else if (strncmp("max_qubits=", argv[i], 11) == 0) {
+			max_qubits = atoi(argv[i] + 11);
+		}
+		else if (strncmp("max_shots=", argv[i], 10) == 0) {
+			max_shots = atoi(argv[i] + 10);
+		}
+		else if (strncmp("max_mbd=", argv[i], 8) == 0) {
+			max_mbd = atoi(argv[i] + 8);
+		}
+	}
+
+	if (nrQubits < min_qubits)
+	{
+#ifdef PRINT_INFO
+		slurm_info("%s: Number of qubits %d is less than minimium %d in %s", maestro_spank, nrQubits, min_qubits, __func__);
+#endif
+		nrQubits = min_qubits;
+		nrQubitsSet = true;
+		result = true;
+	}
+
+	if (nrQubits > max_qubits)
+	{
+#ifdef PRINT_INFO
+		slurm_info("%s: Number of qubits %d is greater than maximum %d in %s", maestro_spank, max_qubits, max_qubits, __func__);
+#endif
+		nrQubits = max_qubits;
+		nrQubitsSet = true;
+		result = true;
+	}
+
+	if (nrShots > max_shots)
+	{
+#ifdef PRINT_INFO
+		slurm_info("%s: Number of shots %d is greater than maximum %d in %s", maestro_spank, nrShots, max_shots, __func__);
+#endif
+		nrShots = max_shots;
+		nrShotsSet = true;
+		result = true;
+	}
+
+	if (maxBondDim > max_mbd || (maxBondDim == 0 && max_mbd > 0))
+	{
+#ifdef PRINT_INFO
+		slurm_info("%s: Max bond dimension %d is greater than maximum %d in %s", maestro_spank, maxBondDim, max_mbd, __func__);
+#endif
+		maxBondDim = max_mbd;
+		maxBondDimSet = true;
+		result = true;
+	}
+
+	return result;
+}
+
 static bool _option_set()
 {
 	return nrQubitsSet || nrShotsSet || simulatorTypeSet || simulationTypeSet || maxBondDimSet;
@@ -83,12 +190,20 @@ static int _nr_qubits_cb(int val, const char* optarg, int remote) {
 	nrQubits = atoi(optarg);
 	nrQubitsSet = true;
 
+#ifdef PRINT_INFO
+	slurm_info("%s: Nr qubits cb, nr qubits: %d", maestro_spank, nrQubits);
+#endif
+
 	return SLURM_SUCCESS;
 }
 
 static int _nr_shots_cb(int val, const char* optarg, int remote) {
 	nrShots = atoi(optarg);
 	nrShotsSet = true;
+
+#ifdef PRINT_INFO
+	slurm_info("%s: Nr shots cb, nr shots: %d", maestro_spank, nrShots);
+#endif
 
 	return SLURM_SUCCESS;
 }
@@ -122,6 +237,10 @@ static int _simulator_type_cb(int val, const char* optarg, int remote) {
 
 	simulatorTypeSet = true;
 
+#ifdef PRINT_INFO
+	slurm_info("%s: Simulator type cb, sim type: %d", maestro_spank, simulatorType);
+#endif
+
 	return SLURM_SUCCESS;
 }
 
@@ -151,6 +270,10 @@ static int _simulation_type_cb(int val, const char* optarg, int remote) {
 
 	simulationTypeSet = true;
 
+#ifdef PRINT_INFO
+	slurm_info("%s: Simulation type cb, type: %d", maestro_spank, simulationType);
+#endif
+
 	return SLURM_SUCCESS;
 }
 
@@ -158,6 +281,10 @@ static int _max_bond_cb(int val, const char* optarg, int remote) {
 	maxBondDim = atoi(optarg);
 
 	maxBondDimSet = true;
+
+#ifdef PRINT_INFO
+	slurm_info("%s: Max bond dim cb, value: %d", maestro_spank, maxBondDim);
+#endif
 
 	return SLURM_SUCCESS;
 }
@@ -179,7 +306,7 @@ static int _set_env(spank_t spank_ctxt) {
 
 		if (nrShotsSet)
 		{
-			err = spank_setenv(spank_ctxt, "maestro_nrshots", std::to_string(nrShots).c_str(), 1);
+			err = spank_setenv(spank_ctxt, "maestro_shots", std::to_string(nrShots).c_str(), 1);
 			if (err != ESPANK_SUCCESS)
 			{
 				slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
@@ -222,7 +349,7 @@ static int _set_env(spank_t spank_ctxt) {
 		if (nrQubitsSet)
 			setenv("maestro_nrqubits", std::to_string(nrQubits).c_str(), 1);
 		if (nrShotsSet)
-			setenv("maestro_nrshots", std::to_string(nrShots).c_str(), 1);
+			setenv("maestro_shots", std::to_string(nrShots).c_str(), 1);
 		if (simulatorTypeSet)
 			setenv("maestro_simulator_type", std::to_string(simulatorType).c_str(), 1);
 		if (simulationTypeSet)
@@ -287,14 +414,14 @@ std::vector<std::string> _get_job_args(spank_t spank_ctxt) {
 
 
 struct spank_option maestro_spank_options[] = {
-	{(char*)"nr_qubits",
+	{(char*)"nrqubits",
 	 (char*)"Qubits",
 	 (char*)"Number of qubits in the simulator.",
 	 1,
 	 0,
 	 (spank_opt_cb_f)_nr_qubits_cb},
 
-	 {(char*)"nr_shots",
+	 {(char*)"shots",
 	 (char*)"Shots",
 	 (char*)"Number of shots for the execution.",
 	 1,
@@ -385,7 +512,9 @@ extern "C"
 		for (int i = 0; i < argc; ++i)
 			slurm_debug("%s: argv[%d] = %s, in %s", maestro_spank, i, argv[i], __func__);
 
-		return _set_env(spank_ctxt);
+		_get_args_into_options(spank_ctxt, argc, argv);
+
+		return _option_set() ? _set_env(spank_ctxt) : SLURM_SUCCESS;
 	}
 
 	// local - srun - call 2
@@ -414,7 +543,9 @@ extern "C"
 		for (int i = 0; i < argc; ++i)
 			slurm_debug("%s: argv[%d] = %s, in %s", maestro_spank, i, argv[i], __func__);
 
-		return _set_env(spank_ctxt);
+		_get_args_into_options(spank_ctxt, argc, argv);
+
+		return _option_set() ? _set_env(spank_ctxt) : SLURM_SUCCESS;
 	}
 
 	// local - srun - call 3
@@ -426,7 +557,9 @@ extern "C"
 
 		_print_info(spank_ctxt, argc, argv, __func__);
 
-		return _set_env(spank_ctxt);
+		_get_args_into_options(spank_ctxt, argc, argv);
+
+		return _option_set() ? _set_env(spank_ctxt) : SLURM_SUCCESS;
 	}
 
 	// remote/slurmstepd context - compute (stepd) - call 3
@@ -437,46 +570,9 @@ extern "C"
 
 		_print_info(spank_ctxt, argc, argv, __func__);
 
-		for (int i = 0; i < argc; ++i) {
-			if (strncmp("min_qubits=", argv[i], 11) == 0) {
-				int min_qubits = atoi(argv[i] + 11);
-				if (nrQubits < min_qubits)
-				{
-					slurm_info("%s: Number of qubits %d is less than minimium %d in %s", maestro_spank, nrQubits, min_qubits, __func__);
-					nrQubits = min_qubits;
-					nrQubitsSet = true;
-				}
-			}
-			else if (strncmp("max_qubits=", argv[i], 11) == 0) {
-				int max_qubits = atoi(argv[i] + 11);
-				if (nrQubits > max_qubits)
-				{
-					slurm_info("%s: Number of qubits %d is greater than maximum %d in %s", maestro_spank, max_qubits, max_qubits, __func__);
-					nrQubits = max_qubits;
-					nrQubitsSet = true;
-				}
-			}
-			else if (strncmp("max_shots=", argv[i], 10) == 0) {
-				int max_shots = atoi(argv[i] + 10);
-				if (nrShots > max_shots)
-				{
-					slurm_info("%s: Number of shots %d is greater than maximum %d in %s", maestro_spank, nrShots, max_shots, __func__);
-					nrShots = max_shots;
-					nrShotsSet = true;
-				}
-			}
-			else if (strncmp("max_mbd=", argv[i], 8) == 0) {
-				int max_mbd = atoi(argv[i] + 8);
-				if (maxBondDim > max_mbd)
-				{
-					slurm_info("%s: Max bond dimension %d is greater than maximum %d in %s", maestro_spank, maxBondDim, max_mbd, __func__);
-					maxBondDim = max_mbd;
-					maxBondDimSet = true;
-				}
-			}
-		}
+		_get_args_into_options(spank_ctxt, argc, argv);
 
-		return _set_env(spank_ctxt);
+		return _option_set() ? _set_env(spank_ctxt) : SLURM_SUCCESS;
 	}
 
 	// remote/slurmstepd context - compute (stepd) - call 4
@@ -521,7 +617,9 @@ extern "C"
 		if (option == nullptr || optlen == 0)
 			return SLURM_SUCCESS;
 
-		return SLURM_SUCCESS;
+		_get_args_into_options(spank_ctxt, argc, argv);
+
+		return _option_set() ? _set_env(spank_ctxt) : SLURM_SUCCESS;
 	}
 
 	// remote/slurmstepd context - compute (stepd) - call 7

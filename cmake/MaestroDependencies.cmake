@@ -6,10 +6,8 @@ ExternalProject_Add(
 	GIT_REPOSITORY https://github.com/QoroQuantum/maestro.git
 	GIT_TAG main
 	UPDATE_COMMAND ""
-	CONFIGURE_COMMAND ""
-	BUILD_COMMAND bash "${CMAKE_BINARY_DIR}/maestro-prefix/src/maestro/build.sh"
-	BUILD_IN_SOURCE true
-	INSTALL_DIR ${CMAKE_BINARY_DIR}
-	INSTALL_COMMAND cp "${CMAKE_BINARY_DIR}/maestro-prefix/src/maestro/build/maestro.so" "${CMAKE_BINARY_DIR}/maestro-prefix/src/maestro/build/bin/maestro" "${CMAKE_BINARY_DIR}/"
+	CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR} -DBUILD_TESTING=OFF -DMAESTRO_BUILD_DOCS=OFF
+    PATCH_COMMAND sed -i.bak "s/set(COMPILE_TESTS True)/option(COMPILE_TESTS \"Compile tests\" OFF)/" <SOURCE_DIR>/CMakeLists.txt
+    BUILD_COMMAND ${CMAKE_COMMAND} --build .
+    INSTALL_COMMAND ${CMAKE_COMMAND} --install .
 	)
-

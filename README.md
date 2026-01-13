@@ -108,6 +108,33 @@ srun ./my_maestro_app
 
 See the `examples/` directory for complete batch script examples.
 
+### Running Multiple Files
+
+If you have a directory of QASM files and want to process them all, there are two recommended ways:
+
+**1. Serial Execution (Scripted Runner):**
+Use the provided `run_directory.sh` script to loop through files and save results:
+```bash
+./examples/run_directory.sh ./my_qasm_dir results_prefix
+```
+
+**2. Parallel Execution (SLURM Job Arrays):**
+For large-scale simulations, use SLURM Job Arrays to run each circuit in parallel across different nodes. See `examples/maestro_array.sh` for a template.
+
+## Testing
+
+The project includes a suite of unit tests that use mocked SLURM headers. This allows you to verify the plugin's logic (e.g., argument parsing and constraints) even on systems without SLURM installed (like macOS).
+
+To build and run the tests:
+
+```bash
+mkdir -p build
+cd build
+cmake ..
+cmake --build .
+ctest --verbose
+```
+
 ## License
 
 This project is licensed under the terms of the [GNU General Public License v3.0](LICENSE).

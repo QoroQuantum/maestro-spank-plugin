@@ -3,6 +3,10 @@ project(maestro_spank_plugin)
 
 enable_language(CXX)
 
+# Enable testing
+enable_testing()
+option(BUILD_TESTING "Build the testing tree." ON)
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -20,4 +24,4 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 include(cmake/MaestroDependencies.cmake)
 
 add_subdirectory(src)
-
+add_subdirectory(tests)

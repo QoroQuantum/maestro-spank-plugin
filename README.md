@@ -1,6 +1,10 @@
 # Maestro SPANK Plugin
 
+![CI](https://github.com/QoroQuantum/maestro-spank-plugin/actions/workflows/ci.yml/badge.svg)
+
 A [SLURM SPANK](https://slurm.schedmd.com/spank.html) (Slurm Plug-in Architecture for Node and Job (K)ontrol) plugin for integrating [Maestro](https://github.com/QoroQuantum/maestro) functionality into SLURM jobs. This plugin allows users to configure Maestro environment simulations directly via SLURM command-line options, such as specifying the number of qubits or shots.
+
+We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to get involved.
 
 ## Prerequisites
 

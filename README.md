@@ -58,11 +58,12 @@ optional /usr/lib64/slurm/maestro_spank_plugin.so
 ```
 
 #### Configuration Arguments
+
 You can pass arguments to the plugin in `plugstack.conf` to set defaults or limits.
 
 ```conf
 # Example: Set default qubits to 10 and max usage to 32
-optional /usr/lib64/slurm/maestro_spank_plugin.so nrqubits=10 max_qubits=32
+optional /usr/lib64/slurm/maestro_spank_plugin.so nrqubits=10 max_qubits=32 auto_set_qubit_count=1
 ```
 
 **Available `plugstack.conf` arguments:**
@@ -73,6 +74,7 @@ optional /usr/lib64/slurm/maestro_spank_plugin.so nrqubits=10 max_qubits=32
 - `max_qubits=<int>`: Maximum allowed qubits (limits user requests).
 - `max_shots=<int>`: Maximum allowed shots.
 - `max_mbd=<int>`: Maximum allowed bond dimension.
+- `auto_set_qubit_count=<0|1>`: Enable/disable automatic qubit detection (default: 0).
 
 ## Usage
 
@@ -90,24 +92,6 @@ The following new flags are available:
 | `--simulation_type=<type>` | Simulation method: `auto`, `statevector`, `mps`, `stabilizer`, `tensor`. |
 | `--max_bond_dim=<int>` | Maximum bond dimension for MPS simulation. |
 | `--auto-set-qubit-count` | Automatically detect and set the qubit count from the input QASM file. |
-
-### Configuration Arguments (`plugstack.conf`)
-
-You can pass arguments to the plugin in `plugstack.conf` to set defaults or limits:
-
-```conf
-optional /usr/lib64/slurm/maestro_spank_plugin.so nrqubits=10 auto_set_qubit_count=1
-```
-
-**Available `plugstack.conf` arguments:**
-- `nrqubits=<int>`: Default number of qubits.
-- `shots=<int>`: Default number of shots.
-- `max_bond_dim=<int>`: Default max bond dimension.
-- `min_qubits=<int>`: Minimum allowed qubits.
-- `max_qubits=<int>`: Maximum allowed qubits.
-- `max_shots=<int>`: Maximum allowed shots.
-- `max_mbd=<int>`: Maximum allowed bond dimension.
-- `auto_set_qubit_count=<0|1>`: Enable/disable automatic qubit detection (default: 0).
 
 ### Examples
 

@@ -8,6 +8,8 @@ extern "C" {
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <fstream>
+#include <regex>
 
 #include "maestro_spank.h"
 
@@ -21,6 +23,7 @@ static int simulationType = 0;
 static bool simulationTypeSet = false;
 static int maxBondDim = 0;
 static bool maxBondDimSet = false;
+static bool autoSetQubitCount = false;
 
 static const char* spank_ctx_names[] = {"S_CTX_ERROR",     "S_CTX_LOCAL",  "S_CTX_REMOTE",
                                         "S_CTX_ALLOCATOR", "S_CTX_SLURMD", "S_CTX_JOB_SCRIPT"};
@@ -62,6 +65,81 @@ static void _print_info(spank_t spank_ctxt, int argc, char** argv, const char* f
         }
     }
 #endif
+}
+
+static int _parse_qasm_for_qubits(const std::string& filename) {
+    std::ifstream file(filename);
+    if (!file.is_open()) return 0;
+
+    int total_qubits = 0;
+    std::string line;
+    // Regex to match qreg name[N];
+    std::regex qreg_regex(R"(qreg\s+\w+\s*\[\s*(\d+)\s*\]\s*;)");
+    std::smatch match;
+
+    while (std::getline(file, line)) {
+        // Skip comments (lines starting with //)
+        size_t first = line.find_first_not_of(" \t\n\r");
+        if (first != std::string::npos && line.size() > first + 1 && line[first] == '/' && line[first + 1] == '/')
+            continue;
+
+        if (line.find("qreg") != std::string::npos) {
+            auto search_start = line.cbegin();
+            while (std::regex_search(search_start, line.cend(), match, qreg_regex)) {
+                if (match.size() > 1) {
+                    total_qubits += std::stoi(match[1].str());
+                }
+                search_start = match.suffix().first;
+            }
+        }
+    }
+    return total_qubits;
+}
+
+std::string _get_env(spank_t spank_ctxt, const std::string& var_name) {
+    static const int str_size = 1024;
+    char value[str_size];
+
+    if (spank_remote(spank_ctxt)) {
+        spank_err_t err = spank_getenv(spank_ctxt, var_name.c_str(), value, str_size);
+
+        if (err == ESPANK_ENV_NOEXIST) return std::string();
+
+        if (err != ESPANK_SUCCESS) {
+            slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+            return std::string();
+        }
+    } else {
+        char* env_value = getenv(var_name.c_str());
+        if (env_value == nullptr) return std::string();
+        strncpy(value, env_value, str_size);
+        value[str_size - 1] = 0;
+    }
+
+    std::string result(value);
+
+    return result;
+}
+
+std::vector<std::string> _get_job_args(spank_t spank_ctxt) {
+    std::vector<std::string> job_args;
+
+    char** args = nullptr;
+    int argc = 0;
+
+    spank_err_t err = spank_get_item(spank_ctxt, S_JOB_ARGV, &argc, &args);
+    if (err != ESPANK_SUCCESS) {
+        slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+        return job_args;
+    }
+
+    job_args.reserve(argc);
+
+    for (int i = 0; i < argc; ++i) {
+        job_args.push_back(std::string(args[i]));
+    }
+
+    return job_args;
 }
 
 static bool _get_args_into_options(spank_t spank_ctxt, int argc, char** argv) {
@@ -117,6 +195,8 @@ static bool _get_args_into_options(spank_t spank_ctxt, int argc, char** argv) {
             max_shots = atoi(argv[i] + 10);
         } else if (strncmp("max_mbd=", argv[i], 8) == 0) {
             max_mbd = atoi(argv[i] + 8);
+        } else if (strncmp("auto_set_qubit_count=", argv[i], 21) == 0) {
+            autoSetQubitCount = (atoi(argv[i] + 21) != 0);
         }
     }
 
@@ -158,6 +238,25 @@ static bool _get_args_into_options(spank_t spank_ctxt, int argc, char** argv) {
         maxBondDim = max_mbd;
         maxBondDimSet = true;
         result = true;
+    }
+
+    if (autoSetQubitCount && !nrQubitsSet) {
+        std::vector<std::string> job_args = _get_job_args(spank_ctxt);
+        for (const auto& arg : job_args) {
+            if (arg.size() > 5 && arg.substr(arg.size() - 5) == ".qasm") {
+                int qasm_qubits = _parse_qasm_for_qubits(arg);
+                if (qasm_qubits > 0) {
+#ifdef PRINT_INFO
+                    slurm_info("%s: Setting number of qubits to %d from QASM file %s", maestro_spank, qasm_qubits,
+                               arg.c_str());
+#endif
+                    nrQubits = qasm_qubits;
+                    nrQubitsSet = true;
+                    result = true;
+                    break;
+                }
+            }
+        }
     }
 
     return result;
@@ -259,6 +358,11 @@ static int _max_bond_cb(int val, const char* optarg, int remote) {
     return SLURM_SUCCESS;
 }
 
+static int _auto_set_qubit_count_cb(int val, const char* optarg, int remote) {
+    autoSetQubitCount = true;
+    return SLURM_SUCCESS;
+}
+
 static int _set_env(spank_t spank_ctxt) {
     if (spank_remote(spank_ctxt)) {
         spank_err_t err;
@@ -313,53 +417,7 @@ static int _set_env(spank_t spank_ctxt) {
     return SLURM_SUCCESS;
 }
 
-std::string _get_env(spank_t spank_ctxt, const std::string& var_name) {
-    static const int str_size = 1024;
-    char value[str_size];
-
-    if (spank_remote(spank_ctxt)) {
-        spank_err_t err = spank_getenv(spank_ctxt, var_name.c_str(), value, str_size);
-
-        if (err == ESPANK_ENV_NOEXIST) return std::string();
-
-        if (err != ESPANK_SUCCESS) {
-            slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
-            return std::string();
-        }
-    } else {
-        char* env_value = getenv(var_name.c_str());
-        if (env_value == nullptr) return std::string();
-        strncpy(value, env_value, str_size);
-        value[str_size - 1] = 0;
-    }
-
-    std::string result(value);
-
-    return result;
-}
-
-std::vector<std::string> _get_job_args(spank_t spank_ctxt) {
-    std::vector<std::string> job_args;
-
-    char** args = nullptr;
-    int argc = 0;
-
-    spank_err_t err = spank_get_item(spank_ctxt, S_JOB_ARGV, &argc, &args);
-    if (err != ESPANK_SUCCESS) {
-        slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
-        return job_args;
-    }
-
-    job_args.reserve(argc);
-
-    for (int i = 0; i < argc; ++i) {
-        job_args.push_back(std::string(args[i]));
-    }
-
-    return job_args;
-}
-
-struct spank_option maestro_spank_options[] = {
+static struct spank_option maestro_spank_options[] = {
     {(char*)"nrqubits", (char*)"Qubits", (char*)"Number of qubits in the simulator.", 1, 0,
      (spank_opt_cb_f)_nr_qubits_cb},
 
@@ -374,6 +432,8 @@ struct spank_option maestro_spank_options[] = {
 
     {(char*)"max_bond_dim", (char*)"MaxBondDim", (char*)"Maximum bond dimension for mps.", 1, 0,
      (spank_opt_cb_f)_max_bond_cb},
+    {(char*)"auto-set-qubit-count", (char*)"AutoQubits", (char*)"Automatically set qubit count from QASM file.", 0, 0,
+     (spank_opt_cb_f)_auto_set_qubit_count_cb},
 
     SPANK_OPTIONS_TABLE_END};
 

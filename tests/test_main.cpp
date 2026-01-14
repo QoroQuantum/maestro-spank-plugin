@@ -2,6 +2,7 @@
 #include "mocks/mock_spank_utils.h"
 #include <map>
 #include <string>
+#include <fstream>
 
 // Re-declare external C functions from the plugin that we want to call
 extern "C" {
@@ -130,4 +131,103 @@ TEST_F(MaestroPluginTest, DoesNotSetEnvInNonRemoteContext) {
     // So if spank_remote is false, it uses standard setenv.
     // We can verify g_env_vars is empty.
     EXPECT_TRUE(g_env_vars.empty());
+}
+
+TEST_F(MaestroPluginTest, AutoDetectsNrQubitsFromQasm) {
+    mock_spank_set_context(S_CTX_REMOTE);
+    mock_spank_set_remote(1);
+
+    // Create a dummy QASM file
+    const char* qasm_path = "test_auto_qubits.qasm";
+    std::ofstream qasm_file(qasm_path);
+    qasm_file << "// Sample QASM\n";
+    qasm_file << "OPENQASM 2.0;\n";
+    qasm_file << "qreg qubits[22];\n";
+    qasm_file.close();
+
+    // Mock job arguments
+    std::vector<std::string> job_args = {"maestro", "test_auto_qubits.qasm"};
+    mock_spank_set_argv(job_args);
+
+    // Enable auto detection via plugin args
+    char* argv[] = {(char*)"auto_set_qubit_count=1", NULL};
+    int argc = 1;
+
+    slurm_spank_job_prolog(nullptr, argc, argv);
+
+    EXPECT_EQ(g_env_vars["maestro_nrqubits"], "22");
+
+    // Clean up
+    std::remove(qasm_path);
+}
+
+TEST_F(MaestroPluginTest, SumsMultipleQregsFromQasm) {
+    mock_spank_set_context(S_CTX_REMOTE);
+    mock_spank_set_remote(1);
+
+    const char* qasm_path = "test_sum_qubits.qasm";
+    std::ofstream qasm_file(qasm_path);
+    qasm_file << "qreg q[10];\n";
+    qasm_file << "qreg r[5];\n";
+    qasm_file << "// qreg comment[100];\n";  // Should be ignored
+    qasm_file.close();
+
+    std::vector<std::string> job_args = {"maestro", "test_sum_qubits.qasm"};
+    mock_spank_set_argv(job_args);
+
+    char* argv[] = {(char*)"auto_set_qubit_count=1", NULL};
+    int argc = 1;
+
+    slurm_spank_job_prolog(nullptr, argc, argv);
+
+    EXPECT_EQ(g_env_vars["maestro_nrqubits"], "15");
+
+    std::remove(qasm_path);
+}
+
+TEST_F(MaestroPluginTest, DoesNotAutoDetectWhenDisabled) {
+    mock_spank_set_context(S_CTX_REMOTE);
+    mock_spank_set_remote(1);
+
+    const char* qasm_path = "test_disabled.qasm";
+    std::ofstream qasm_file(qasm_path);
+    qasm_file << "qreg q[10];\n";
+    qasm_file.close();
+
+    std::vector<std::string> job_args = {"maestro", "test_disabled.qasm"};
+    mock_spank_set_argv(job_args);
+
+    // Flag is 0 or not set, so detection should NOT happen
+    char* argv[] = {NULL};
+    int argc = 0;
+
+    slurm_spank_job_prolog(nullptr, argc, argv);
+
+    // maestro_nrqubits should NOT be in g_env_vars
+    EXPECT_TRUE(g_env_vars.find("maestro_nrqubits") == g_env_vars.end());
+
+    std::remove(qasm_path);
+}
+
+TEST_F(MaestroPluginTest, ExplicitNrQubitsOverridesQasm) {
+    mock_spank_set_context(S_CTX_REMOTE);
+    mock_spank_set_remote(1);
+
+    const char* qasm_path = "test_override.qasm";
+    std::ofstream qasm_file(qasm_path);
+    qasm_file << "qreg q[10];\n";
+    qasm_file.close();
+
+    std::vector<std::string> job_args = {"maestro", "test_override.qasm"};
+    mock_spank_set_argv(job_args);
+
+    // Explicitly set 5 qubits AND enable auto (explicit should win)
+    char* argv[] = {(char*)"nrqubits=5", (char*)"auto_set_qubit_count=1", NULL};
+    int argc = 2;
+
+    slurm_spank_job_prolog(nullptr, argc, argv);
+
+    EXPECT_EQ(g_env_vars["maestro_nrqubits"], "5");
+
+    std::remove(qasm_path);
 }

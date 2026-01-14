@@ -12,9 +12,7 @@ void mock_spank_set_context(spank_context_t ctx);
 void mock_spank_set_remote(int remote);
 void mock_spank_set_argv(const std::vector<std::string>& argv);
 
-extern "C" {
 // Expose environment map for verification
 extern std::map<std::string, std::string> g_env_vars;
-}
 
 #endif

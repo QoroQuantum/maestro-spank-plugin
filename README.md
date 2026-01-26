@@ -92,6 +92,7 @@ The following new flags are available:
 | `--simulation_type=<type>` | Simulation method: `auto`, `statevector`, `mps`, `stabilizer`, `tensor`. |
 | `--max_bond_dim=<int>` | Maximum bond dimension for MPS simulation. |
 | `--auto-set-qubit-count` | Automatically detect and set the qubit count from the input QASM file. |
+| `--expectations` | Compute expectation values of observables (requires a .obs file alongside the .qasm file). |
 
 ### Examples
 

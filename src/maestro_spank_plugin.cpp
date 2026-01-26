@@ -24,6 +24,8 @@ static bool simulationTypeSet = false;
 static int maxBondDim = 0;
 static bool maxBondDimSet = false;
 static bool autoSetQubitCount = false;
+static bool returnExpectations = false;
+static bool returnExpectationsSet = false;
 
 static const char* spank_ctx_names[] = {"S_CTX_ERROR",     "S_CTX_LOCAL",  "S_CTX_REMOTE",
                                         "S_CTX_ALLOCATOR", "S_CTX_SLURMD", "S_CTX_JOB_SCRIPT"};
@@ -197,6 +199,10 @@ static bool _get_args_into_options(spank_t spank_ctxt, int argc, char** argv) {
             max_mbd = atoi(argv[i] + 8);
         } else if (strncmp("auto_set_qubit_count=", argv[i], 21) == 0) {
             autoSetQubitCount = (atoi(argv[i] + 21) != 0);
+        } else if (!returnExpectationsSet && strncmp("expectations=", argv[i], 13) == 0) {
+            returnExpectations = (atoi(argv[i] + 13) != 0);
+            returnExpectationsSet = true;
+            result = true;
         }
     }
 
@@ -263,7 +269,7 @@ static bool _get_args_into_options(spank_t spank_ctxt, int argc, char** argv) {
 }
 
 static bool _option_set() {
-    return nrQubitsSet || nrShotsSet || simulatorTypeSet || simulationTypeSet || maxBondDimSet;
+    return nrQubitsSet || nrShotsSet || simulatorTypeSet || simulationTypeSet || maxBondDimSet || returnExpectationsSet;
 }
 
 static int _nr_qubits_cb(int val, const char* optarg, int remote) {
@@ -363,6 +369,12 @@ static int _auto_set_qubit_count_cb(int val, const char* optarg, int remote) {
     return SLURM_SUCCESS;
 }
 
+static int _return_expectations_cb(int val, const char* optarg, int remote) {
+    returnExpectations = true;
+    returnExpectationsSet = true;
+    return SLURM_SUCCESS;
+}
+
 static int _set_env(spank_t spank_ctxt) {
     if (spank_remote(spank_ctxt)) {
         spank_err_t err;
@@ -406,12 +418,23 @@ static int _set_env(spank_t spank_ctxt) {
                 return err;
             }
         }
+
+        if (returnExpectationsSet) {
+            err =
+                spank_setenv(spank_ctxt, "maestro_expectations", std::to_string(returnExpectations ? 1 : 0).c_str(), 1);
+            if (err != ESPANK_SUCCESS) {
+                slurm_error("%s: %s in %s", maestro_spank, spank_strerror(err), __func__);
+                return err;
+            }
+        }
     } else {
         if (nrQubitsSet) setenv("maestro_nrqubits", std::to_string(nrQubits).c_str(), 1);
         if (nrShotsSet) setenv("maestro_shots", std::to_string(nrShots).c_str(), 1);
         if (simulatorTypeSet) setenv("maestro_simulator_type", std::to_string(simulatorType).c_str(), 1);
         if (simulationTypeSet) setenv("maestro_simulation_type", std::to_string(simulationType).c_str(), 1);
         if (maxBondDimSet) setenv("maestro_max_bond_dim", std::to_string(maxBondDim).c_str(), 1);
+        if (returnExpectationsSet)
+            setenv("maestro_expectations", std::to_string(returnExpectations ? 1 : 0).c_str(), 1);
     }
 
     return SLURM_SUCCESS;
@@ -434,6 +457,8 @@ static struct spank_option maestro_spank_options[] = {
      (spank_opt_cb_f)_max_bond_cb},
     {(char*)"auto-set-qubit-count", (char*)"AutoQubits", (char*)"Automatically set qubit count from QASM file.", 0, 0,
      (spank_opt_cb_f)_auto_set_qubit_count_cb},
+    {(char*)"expectations", (char*)"Expectations", (char*)"Compute expectation values of observables.", 0, 0,
+     (spank_opt_cb_f)_return_expectations_cb},
 
     SPANK_OPTIONS_TABLE_END};
 

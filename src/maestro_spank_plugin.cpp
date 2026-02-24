@@ -309,6 +309,8 @@ static int _simulator_type_cb(int val, const char* optarg, int remote) {
         simulatorType = 3;
     } else if (sim_type_str == "gpu") {
         simulatorType = 4;
+    } else if (sim_type_str == "quest") {
+		simulatorType = 5;
     } else if (sim_type_str == "auto") {
         simulatorType = 1000;
     } else {
@@ -335,8 +337,12 @@ static int _simulation_type_cb(int val, const char* optarg, int remote) {
         simulationType = 1;
     } else if (sim_type_str == "stabilizer" || sim_type_str == "clifford") {
         simulationType = 2;
-    } else if (sim_type_str == "tensor" || sim_type_str == "tensor_network") {
+    }
+    else if (sim_type_str == "tensor" || sim_type_str == "tensor_network") {
         simulationType = 3;
+	}
+	else if (sim_type_str == "pauli" || sim_type_str == "pauli_propagation" || sim_type_str == "pprop") {
+        simulationType = 4;
     } else if (sim_type_str == "auto") {
         simulationType = 1000;
     } else {
